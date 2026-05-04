@@ -1,72 +1,168 @@
-<!-- Load Firebase SDKs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <link rel="manifest" href="manifest.json">
+    <title>Task Tracker</title>
+    <style>
+        :root { --ios-blue: #007aff; --ios-bg: #f2f2f7; --ios-gray: #8e8e93; }
+        body { font-family: -apple-system, sans-serif; background: var(--ios-bg); margin: 0; padding: env(safe-area-inset-top) 0; }
+        header { padding: 15px 20px; background: white; border-bottom: 1px solid #d1d1d6; position: sticky; top: 0; z-index: 10; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .controls { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; }
+        select#sortSelect { padding: 5px; border-radius: 8px; border: 1px solid #d1d1d6; background: #fff; }
+        .task-list { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .task-card { background: white; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .task-info h3 { margin: 0; font-size: 1.1rem; color: #1c1c1e; }
+        .task-info span { font-size: 0.85rem; color: var(--ios-gray); display: block; margin-top: 2px; }
+        .days-badge { text-align: center; min-width: 50px; padding: 8px; border-radius: 10px; font-weight: bold; font-variant-numeric: tabular-nums; }
+        .urgent { background: #ff3b30; color: white; }
+        .warning { background: #ffcc00; color: black; }
+        .ok { background: #34c759; color: white; }
+        #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 20; padding: 20px; }
+        .modal-content { background: white; padding: 20px; border-radius: 15px; display: flex; flex-direction: column; gap: 15px; }
+        label { font-size: 0.8rem; font-weight: bold; color: var(--ios-gray); margin-bottom: -10px; }
+        input { padding: 12px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 1rem; -webkit-appearance: none; }
+        .btn { background: var(--ios-blue); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-top">
+        <h2 style="margin:0">Tasks</h2>
+        <button class="btn" onclick="window.openModal()">+ Add</button>
+    </div>
+    <div class="controls">
+        <span>Sort:</span>
+        <select id="sortSelect" onchange="window.renderTasks()">
+            <option value="urgency">Urgency</option>
+            <option value="category">Category</option>
+            <option value="date">Last Updated</option>
+        </select>
+    </div>
+</header>
+
+<div id="taskList" class="task-list"></div>
+
+<div id="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle" style="margin:0">New Task</h3>
+        <label>NAME</label>
+        <input type="text" id="taskName">
+        <label>CATEGORY</label>
+        <input type="text" id="taskCat">
+        <label>TARGET DAYS</label>
+        <input type="number" id="taskTarget">
+        <label>COMPLETED ON</label>
+        <input type="date" id="taskDate">
+        <button class="btn" onclick="window.saveTask()">Save Task</button>
+        <button onclick="window.toggleModal(false)" style="background:none; border:none; color:var(--ios-gray);">Cancel</button>
+    </div>
+</div>
+
 <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-  import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, Timestamp } 
-    from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyC5YOno-5A_eoY-mYE8mYfci-8pdcrwIs8",
-  authDomain: "dayssincetracker-d7c85.firebaseapp.com",
-  projectId: "dayssincetracker-d7c85",
-  storageBucket: "dayssincetracker-d7c85.firebasestorage.app",
-  messagingSenderId: "207532054075",
-  appId: "1:207532054075:web:38f330003ee24a96b36e1e",
-  measurementId: "G-NJLWMT8J3E"
-};
+    const firebaseConfig = {
+      apiKey: "AIzaSyC5YOno-5A_eoY-mYE8mYfci-8pdcrwIs8",
+      authDomain: "dayssincetracker-d7c85.firebaseapp.com",
+      projectId: "dayssincetracker-d7c85",
+      storageBucket: "dayssincetracker-d7c85.firebasestorage.app",
+      messagingSenderId: "207532054075",
+      appId: "1:207532054075:web:38f330003ee24a96b36e1e",
+      measurementId: "G-NJLWMT8J3E"
+    };
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const tasksCol = collection(db, "tasks");
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const tasksCol = collection(db, "tasks");
+    let tasks = [];
+    window.editingId = null;
 
-  let tasks = [];
+    // Listen for Cloud Updates
+    onSnapshot(tasksCol, (snapshot) => {
+        tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        window.renderTasks();
+    });
 
-  // 1. LISTEN FOR REAL-TIME UPDATES
-  onSnapshot(tasksCol, (snapshot) => {
-      tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      renderTasks();
-  });
+    window.renderTasks = () => {
+        const sortBy = document.getElementById('sortSelect').value;
+        const list = document.getElementById('taskList');
+        
+        tasks.sort((a, b) => {
+            const dateA = a.lastDone.toDate();
+            const dateB = b.lastDone.toDate();
+            if (sortBy === 'urgency') {
+                return ((new Date() - dateB) / (b.target * 86400000)) - ((new Date() - dateA) / (a.target * 86400000));
+            } else if (sortBy === 'category') {
+                return a.category.localeCompare(b.category);
+            } else {
+                return dateB - dateA;
+            }
+        });
 
-  window.saveTask = async () => {
-      const name = document.getElementById('taskName').value;
-      const cat = document.getElementById('taskCat').value || 'General';
-      const target = parseInt(document.getElementById('taskTarget').value) || 7;
-      const dateVal = document.getElementById('taskDate').value;
-      const lastDone = dateVal ? new Date(dateVal) : new Date();
+        list.innerHTML = '';
+        tasks.forEach(task => {
+            const days = Math.floor((new Date() - task.lastDone.toDate()) / 86400000);
+            const status = days >= task.target ? 'urgent' : (days >= task.target / 2 ? 'warning' : 'ok');
+            list.innerHTML += `
+                <div class="task-card" onclick="window.handleTaskClick('${task.id}')">
+                    <div class="task-info">
+                        <h3>${task.name}</h3>
+                        <span>${task.category} • Target: ${task.target}d</span>
+                    </div>
+                    <div class="days-badge ${status}">${days}d</div>
+                </div>`;
+        });
+    };
 
-      if (window.editingId) {
-          const taskRef = doc(db, "tasks", window.editingId);
-          await updateDoc(taskRef, { name, category: cat, target, lastDone: Timestamp.fromDate(lastDone) });
-      } else {
-          await addDoc(tasksCol, { name, category: cat, target, lastDone: Timestamp.fromDate(lastDone) });
-      }
-      toggleModal(false);
-  };
+    window.saveTask = async () => {
+        const name = document.getElementById('taskName').value;
+        const cat = document.getElementById('taskCat').value || 'General';
+        const target = parseInt(document.getElementById('taskTarget').value) || 7;
+        const dateVal = document.getElementById('taskDate').value;
+        const lastDone = Timestamp.fromDate(dateVal ? new Date(dateVal + 'T12:00:00') : new Date());
 
-  window.resetTask = async (id) => {
-      if(confirm("Reset to today?")) {
-          const taskRef = doc(db, "tasks", id);
-          await updateDoc(taskRef, { lastDone: Timestamp.fromDate(new Date()) });
-      }
-  };
+        if (window.editingId) {
+            await updateDoc(doc(db, "tasks", window.editingId), { name, category: cat, target, lastDone });
+        } else {
+            await addDoc(tasksCol, { name, category: cat, target, lastDone });
+        }
+        window.toggleModal(false);
+    };
 
-  // Update your renderTasks to handle Firebase Timestamps
-  window.renderTasks = () => {
-      const list = document.getElementById('taskList');
-      list.innerHTML = '';
-      tasks.forEach(task => {
-          const lastDoneDate = task.lastDone.toDate(); // Firebase specific
-          const days = Math.floor((new Date() - lastDoneDate) / (1000 * 60 * 60 * 24));
-          const status = days >= task.target ? 'urgent' : (days >= task.target / 2 ? 'warning' : 'ok');
-          
-          list.innerHTML += `
-              <div class="task-card" onclick="resetTask('${task.id}')">
-                  <div class="task-info">
-                      <h3>${task.name}</h3>
-                      <span>${task.category} • Target: ${task.target}d</span>
-                  </div>
-                  <div class="days-badge ${status}">${days}d</div>
-              </div>`;
-      });
-  };
+    window.handleTaskClick = (id) => {
+        if(confirm("Reset to today? (Cancel to edit)")) {
+            updateDoc(doc(db, "tasks", id), { lastDone: Timestamp.fromDate(new Date()) });
+        } else {
+            window.openModal(id);
+        }
+    };
+
+    window.openModal = (id = null) => {
+        window.editingId = id;
+        document.getElementById('taskDate').value = new Date().toISOString().split('T')[0];
+        if (id) {
+            const t = tasks.find(task => task.id === id);
+            document.getElementById('taskName').value = t.name;
+            document.getElementById('taskCat').value = t.category;
+            document.getElementById('taskTarget').value = t.target;
+            document.getElementById('modalTitle').innerText = "Edit Task";
+        } else {
+            document.getElementById('taskName').value = '';
+            document.getElementById('taskCat').value = '';
+            document.getElementById('taskTarget').value = '';
+            document.getElementById('modalTitle').innerText = "New Task";
+        }
+        window.toggleModal(true);
+    };
+
+    window.toggleModal = (show) => { document.getElementById('modal').style.display = show ? 'block' : 'none'; };
+
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
 </script>
+</body>
+</html>
