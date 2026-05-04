@@ -6,35 +6,173 @@
     <link rel="manifest" href="manifest.json">
     <title>Task Tracker</title>
     <style>
-        :root { --ios-blue: #007aff; --ios-bg: #f2f2f7; }
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--ios-bg); margin: 0; padding: env(safe-area-inset-top) 0; }
-        header { padding: 20px; display: flex; justify-content: space-between; align-items: center; background: white; border-bottom: 1px solid #d1d1d6; position: sticky; top: 0; z-index: 10; }
+        :root { --ios-blue: #007aff; --ios-bg: #f2f2f7; --ios-gray: #8e8e93; }
+        body { font-family: -apple-system, sans-serif; background: var(--ios-bg); margin: 0; padding: env(safe-area-inset-top) 0; }
+        header { padding: 15px 20px; background: white; border-bottom: 1px solid #d1d1d6; position: sticky; top: 0; z-index: 10; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         
+        .controls { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; }
+        select#sortSelect { padding: 5px; border-radius: 8px; border: 1px solid #d1d1d6; background: #fff; }
+
         .task-list { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
         .task-card { background: white; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .task-info h3 { margin: 0; font-size: 1.1rem; }
-        .task-info span { font-size: 0.85rem; color: #8e8e93; }
+        .task-info h3 { margin: 0; font-size: 1.1rem; color: #1c1c1e; }
+        .task-info span { font-size: 0.85rem; color: var(--ios-gray); display: block; margin-top: 2px; }
         
-        .days-badge { text-align: center; min-width: 50px; padding: 8px; border-radius: 10px; font-weight: bold; }
+        .days-badge { text-align: center; min-width: 50px; padding: 8px; border-radius: 10px; font-weight: bold; font-variant-numeric: tabular-nums; }
         .urgent { background: #ff3b30; color: white; }
-        .ok { background: #34c759; color: white; }
         .warning { background: #ffcc00; color: black; }
+        .ok { background: #34c759; color: white; }
 
-        /* Simple Modal */
         #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 20; padding: 20px; }
-        .modal-content { background: white; padding: 20px; border-radius: 15px; display: flex; flex-direction: column; gap: 10px; }
-        input, select { padding: 12px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 1rem; }
-        .btn { background: var(--ios-blue); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; }
+        .modal-content { background: white; padding: 20px; border-radius: 15px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        label { font-size: 0.8rem; font-weight: bold; color: var(--ios-gray); margin-bottom: -10px; }
+        input { padding: 12px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 1rem; -webkit-appearance: none; }
+        .btn { background: var(--ios-blue); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 600; }
     </style>
 </head>
 <body>
 
 <header>
-    <h2>My Tasks</h2>
-    <button class="btn" onclick="toggleModal(true)">+ Add</button>
+    <div class="header-top">
+        <h2 style="margin:0">Tasks</h2>
+        <button class="btn" onclick="openModal()">+ Add</button>
+    </div>
+    <div class="controls">
+        <span>Sort by:</span>
+        <select id="sortSelect" onchange="renderTasks()">
+            <option value="urgency">Urgency</option>
+            <option value="category">Category</option>
+            <option value="date">Last Updated</option>
+        </select>
+    </div>
 </header>
 
 <div id="taskList" class="task-list"></div>
+
+<div id="modal">
+    <div class="modal-content">
+        <h3 id="modalTitle" style="margin:0">New Task</h3>
+        
+        <label>NAME</label>
+        <input type="text" id="taskName" placeholder="e.g. Bedsheets">
+        
+        <label>CATEGORY</label>
+        <input type="text" id="taskCat" placeholder="e.g. Home">
+        
+        <label>TARGET DAYS</label>
+        <input type="number" id="taskTarget" placeholder="e.g. 14">
+        
+        <label>COMPLETED ON</label>
+        <input type="date" id="taskDate">
+        
+        <button class="btn" onclick="saveTask()">Save Task</button>
+        <button onclick="toggleModal(false)" style="background:none; border:none; color:var(--ios-gray);">Cancel</button>
+    </div>
+</div>
+
+<script>
+    let tasks = JSON.parse(localStorage.getItem('myTasks') || "[]");
+    let editingId = null;
+
+    function openModal(id = null) {
+        editingId = id;
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('taskDate').value = today;
+        
+        if (id) {
+            const task = tasks.find(t => t.id === id);
+            document.getElementById('taskName').value = task.name;
+            document.getElementById('taskCat').value = task.category;
+            document.getElementById('taskTarget').value = task.target;
+            document.getElementById('modalTitle').innerText = "Update Task";
+        } else {
+            document.getElementById('taskName').value = '';
+            document.getElementById('taskCat').value = '';
+            document.getElementById('taskTarget').value = '';
+            document.getElementById('modalTitle').innerText = "New Task";
+        }
+        toggleModal(true);
+    }
+
+    function renderTasks() {
+        const sortBy = document.getElementById('sortSelect').value;
+        
+        tasks.sort((a, b) => {
+            if (sortBy === 'urgency') {
+                const getRatio = (t) => (new Date() - new Date(t.lastDone)) / (t.target * 86400000);
+                return getRatio(b) - getRatio(a);
+            } else if (sortBy === 'category') {
+                return a.category.localeCompare(b.category);
+            } else if (sortBy === 'date') {
+                return new Date(b.lastDone) - new Date(a.lastDone);
+            }
+        });
+
+        const list = document.getElementById('taskList');
+        list.innerHTML = '';
+
+        tasks.forEach(task => {
+            const days = Math.floor((new Date() - new Date(task.lastDone)) / (1000 * 60 * 60 * 24));
+            const status = days >= task.target ? 'urgent' : (days >= task.target / 2 ? 'warning' : 'ok');
+            
+            list.innerHTML += `
+                <div class="task-card" onclick="handleTaskClick(${task.id})">
+                    <div class="task-info">
+                        <h3>${task.name}</h3>
+                        <span>${task.category} • Target: ${task.target}d</span>
+                    </div>
+                    <div class="days-badge ${status}">${days}d</div>
+                </div>
+            `;
+        });
+    }
+
+    function handleTaskClick(id) {
+        if(confirm("Reset this task to today? (Cancel to edit details)")) {
+            tasks = tasks.map(t => t.id === id ? {...t, lastDone: new Date().toISOString()} : t);
+            saveAndRefresh();
+        } else {
+            openModal(id);
+        }
+    }
+
+    function saveTask() {
+        const dateVal = document.getElementById('taskDate').value;
+        const completionDate = dateVal ? new Date(dateVal).toISOString() : new Date().toISOString();
+
+        if (editingId) {
+            tasks = tasks.map(t => t.id === editingId ? {
+                ...t, 
+                name: document.getElementById('taskName').value,
+                category: document.getElementById('taskCat').value,
+                target: parseInt(document.getElementById('taskTarget').value),
+                lastDone: completionDate
+            } : t);
+        } else {
+            tasks.push({
+                id: Date.now(),
+                name: document.getElementById('taskName').value,
+                category: document.getElementById('taskCat').value || 'General',
+                target: parseInt(document.getElementById('taskTarget').value) || 7,
+                lastDone: completionDate
+            });
+        }
+        saveAndRefresh();
+        toggleModal(false);
+    }
+
+    function saveAndRefresh() {
+        localStorage.setItem('myTasks', JSON.stringify(tasks));
+        renderTasks();
+    }
+
+    function toggleModal(show) { document.getElementById('modal').style.display = show ? 'block' : 'none'; }
+
+    renderTasks();
+</script>
+</body>
+</html><div id="taskList" class="task-list"></div>
 
 <!-- Add Task Modal -->
 <div id="modal">
