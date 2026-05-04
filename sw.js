@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sheet-tracker-v4';
+const CACHE_NAME = 'sheet-tracker-v5';
 const ASSETS = ['./index.html', './manifest.json'];
 
 self.addEventListener('install', (e) => {
@@ -6,5 +6,12 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+  // If the request is for Firebase (gstatic), let the network handle it normally
+  if (e.request.url.includes('gstatic.com')) {
+    return; 
+  }
+  
+  e.respondWith(
+    caches.match(e.request).then(res => res || fetch(e.request))
+  );
 });
