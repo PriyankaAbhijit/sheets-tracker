@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="manifest.json">
+    <title>Sheet Tracker</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f4f4f9; }
+        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 80%; }
+        h1 { font-size: 3rem; margin: 0; color: #333; }
+        p { color: #666; margin-bottom: 2rem; }
+        button { background: #007aff; color: white; border: none; padding: 15px 30px; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; }
+        button:active { transform: scale(0.98); background: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <p>Days since sheets changed:</p>
+        <h1 id="days">0</h1>
+        <br>
+        <button onclick="resetCounter()">I just changed them!</button>
+    </div>
+
+    <script>
+        function updateDisplay() {
+            const lastDate = localStorage.getItem('lastChanged');
+            if (lastDate) {
+                const diff = Math.floor((new Date() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+                document.getElementById('days').innerText = diff;
+            }
+        }
+
+        function resetCounter() {
+            localStorage.setItem('lastChanged', new Date().toISOString());
+            updateDisplay();
+        }
+
+        // Initialize display
+        updateDisplay();
+
+        // Register Service Worker for offline use
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+</html>
