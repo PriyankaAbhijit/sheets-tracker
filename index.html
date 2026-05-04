@@ -2,47 +2,114 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <link rel="manifest" href="manifest.json">
-    <title>Sheet Tracker</title>
+    <title>Task Tracker</title>
     <style>
-        body { font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f4f4f9; }
-        .card { background: white; padding: 2rem; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 80%; }
-        h1 { font-size: 3rem; margin: 0; color: #333; }
-        p { color: #666; margin-bottom: 2rem; }
-        button { background: #007aff; color: white; border: none; padding: 15px 30px; border-radius: 12px; font-size: 1.1rem; font-weight: 600; cursor: pointer; }
-        button:active { transform: scale(0.98); background: #0056b3; }
+        :root { --ios-blue: #007aff; --ios-bg: #f2f2f7; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: var(--ios-bg); margin: 0; padding: env(safe-area-inset-top) 0; }
+        header { padding: 20px; display: flex; justify-content: space-between; align-items: center; background: white; border-bottom: 1px solid #d1d1d6; position: sticky; top: 0; z-index: 10; }
+        
+        .task-list { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .task-card { background: white; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .task-info h3 { margin: 0; font-size: 1.1rem; }
+        .task-info span { font-size: 0.85rem; color: #8e8e93; }
+        
+        .days-badge { text-align: center; min-width: 50px; padding: 8px; border-radius: 10px; font-weight: bold; }
+        .urgent { background: #ff3b30; color: white; }
+        .ok { background: #34c759; color: white; }
+        .warning { background: #ffcc00; color: black; }
+
+        /* Simple Modal */
+        #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 20; padding: 20px; }
+        .modal-content { background: white; padding: 20px; border-radius: 15px; display: flex; flex-direction: column; gap: 10px; }
+        input, select { padding: 12px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 1rem; }
+        .btn { background: var(--ios-blue); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="card">
-        <p>Days since sheets changed:</p>
-        <h1 id="days">0</h1>
-        <br>
-        <button onclick="resetCounter()">I just changed them!</button>
+
+<header>
+    <h2>My Tasks</h2>
+    <button class="btn" onclick="toggleModal(true)">+ Add</button>
+</header>
+
+<div id="taskList" class="task-list"></div>
+
+<!-- Add Task Modal -->
+<div id="modal">
+    <div class="modal-content">
+        <h3>New Task</h3>
+        <input type="text" id="taskName" placeholder="Task Name (e.g. Air Filter)">
+        <input type="text" id="taskCat" placeholder="Category (e.g. Home)">
+        <input type="number" id="taskTarget" placeholder="Target Days (e.g. 14)">
+        <button class="btn" onclick="addTask()">Save Task</button>
+        <button onclick="toggleModal(false)" style="background:none; border:none; color:grey;">Cancel</button>
     </div>
+</div>
 
-    <script>
-        function updateDisplay() {
-            const lastDate = localStorage.getItem('lastChanged');
-            if (lastDate) {
-                const diff = Math.floor((new Date() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
-                document.getElementById('days').innerText = diff;
-            }
+<script>
+    let tasks = JSON.parse(localStorage.getItem('myTasks') || "[]");
+
+    function renderTasks() {
+        // Sort by days elapsed vs target (urgency)
+        tasks.sort((a, b) => {
+            const diffA = (new Date() - new Date(a.lastDone)) / (1000*60*60*24) / a.target;
+            const diffB = (new Date() - new Date(b.lastDone)) / (1000*60*60*24) / b.target;
+            return diffB - diffA;
+        });
+
+        const list = document.getElementById('taskList');
+        list.innerHTML = '';
+
+        tasks.forEach(task => {
+            const days = Math.floor((new Date() - new Date(task.lastDone)) / (1000 * 60 * 60 * 24));
+            const status = days >= task.target ? 'urgent' : (days >= task.target / 2 ? 'warning' : 'ok');
+            
+            list.innerHTML += `
+                <div class="task-card" onclick="resetTask(${task.id})">
+                    <div class="task-info">
+                        <h3>${task.name}</h3>
+                        <span>${task.category} • Target: ${task.target} days</span>
+                    </div>
+                    <div class="days-badge ${status}">
+                        ${days}d
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function addTask() {
+        const newTask = {
+            id: Date.now(),
+            name: document.getElementById('taskName').value,
+            category: document.getElementById('taskCat').value || 'General',
+            target: parseInt(document.getElementById('taskTarget').value) || 7,
+            lastDone: new Date().toISOString()
+        };
+        tasks.push(newTask);
+        saveAndRefresh();
+        toggleModal(false);
+    }
+
+    function resetTask(id) {
+        if(confirm("Mark as completed today?")) {
+            tasks = tasks.map(t => t.id === id ? {...t, lastDone: new Date().toISOString()} : t);
+            saveAndRefresh();
         }
+    }
 
-        function resetCounter() {
-            localStorage.setItem('lastChanged', new Date().toISOString());
-            updateDisplay();
-        }
+    function saveAndRefresh() {
+        localStorage.setItem('myTasks', JSON.stringify(tasks));
+        renderTasks();
+    }
 
-        // Initialize display
-        updateDisplay();
+    function toggleModal(show) {
+        document.getElementById('modal').style.display = show ? 'block' : 'none';
+    }
 
-        // Register Service Worker for offline use
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
-        }
-    </script>
+    renderTasks();
+</script>
 </body>
 </html>
