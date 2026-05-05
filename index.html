@@ -6,7 +6,7 @@
     <link rel="manifest" href="manifest.json">
     <title>Task Tracker</title>
     <style>
-        :root { --ios-blue: #007aff; --ios-bg: #f2f2f7; --ios-gray: #8e8e93; }
+        :root { --ios-blue: #007aff; --ios-bg: #f2f2f7; --ios-gray: #8e8e93; --ios-red: #ff3b30; }
         body { font-family: -apple-system, sans-serif; background: var(--ios-bg); margin: 0; padding: env(safe-area-inset-top) 0; }
         header { padding: 15px 20px; background: white; border-bottom: 1px solid #d1d1d6; position: sticky; top: 0; z-index: 10; }
         .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
@@ -17,7 +17,7 @@
         .task-info h3 { margin: 0; font-size: 1.1rem; color: #1c1c1e; }
         .task-info span { font-size: 0.85rem; color: var(--ios-gray); display: block; margin-top: 2px; }
         .days-badge { text-align: center; min-width: 50px; padding: 8px; border-radius: 10px; font-weight: bold; font-variant-numeric: tabular-nums; }
-        .urgent { background: #ff3b30; color: white; }
+        .urgent { background: var(--ios-red); color: white; }
         .warning { background: #ffcc00; color: black; }
         .ok { background: #34c759; color: white; }
         #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 20; padding: 20px; }
@@ -25,6 +25,7 @@
         label { font-size: 0.8rem; font-weight: bold; color: var(--ios-gray); margin-bottom: -10px; }
         input { padding: 12px; border: 1px solid #d1d1d6; border-radius: 8px; font-size: 1rem; -webkit-appearance: none; }
         .btn { background: var(--ios-blue); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: 600; }
+        .btn-delete { background: var(--ios-red); margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -49,22 +50,29 @@
 <div id="modal">
     <div class="modal-content">
         <h3 id="modalTitle" style="margin:0">New Task</h3>
+        
         <label>NAME</label>
         <input type="text" id="taskName">
+        
         <label>CATEGORY</label>
-        <input type="text" id="taskCat">
+        <input type="text" id="taskCat" list="categoryOptions" placeholder="Select or type new...">
+        <datalist id="categoryOptions"></datalist>
+        
         <label>TARGET DAYS</label>
         <input type="number" id="taskTarget">
+        
         <label>COMPLETED ON</label>
         <input type="date" id="taskDate">
+        
         <button class="btn" onclick="window.saveTask()">Save Task</button>
+        <button id="deleteBtn" class="btn btn-delete" style="display:none;" onclick="window.deleteTask()">Delete Task</button>
         <button onclick="window.toggleModal(false)" style="background:none; border:none; color:var(--ios-gray);">Cancel</button>
     </div>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyC5YOno-5A_eoY-mYE8mYfci-8pdcrwIs8",
@@ -85,20 +93,30 @@
     // Listen for Cloud Updates
     onSnapshot(tasksCol, (snapshot) => {
         tasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        updateCategoryDatalist();
         window.renderTasks();
     });
+
+    // Automatically update the category list based on existing tasks
+    function updateCategoryDatalist() {
+        const datalist = document.getElementById('categoryOptions');
+        if (!datalist) return;
+        const categories = [...new Set(tasks.map(t => t.category))].filter(Boolean);
+        datalist.innerHTML = categories.map(c => `<option value="${c}">`).join('');
+    }
 
     window.renderTasks = () => {
         const sortBy = document.getElementById('sortSelect').value;
         const list = document.getElementById('taskList');
-        
+        if (!list) return;
+
         tasks.sort((a, b) => {
             const dateA = a.lastDone.toDate();
             const dateB = b.lastDone.toDate();
             if (sortBy === 'urgency') {
                 return ((new Date() - dateB) / (b.target * 86400000)) - ((new Date() - dateA) / (a.target * 86400000));
             } else if (sortBy === 'category') {
-                return a.category.localeCompare(b.category);
+                return (a.category || "").localeCompare(b.category || "");
             } else {
                 return dateB - dateA;
             }
@@ -134,8 +152,15 @@
         window.toggleModal(false);
     };
 
+    window.deleteTask = async () => {
+        if (window.editingId && confirm("Are you sure you want to delete this task?")) {
+            await deleteDoc(doc(db, "tasks", window.editingId));
+            window.toggleModal(false);
+        }
+    };
+
     window.handleTaskClick = (id) => {
-        if(confirm("Reset to today? (Cancel to edit)")) {
+        if(confirm("Reset to today? (Cancel to edit/delete)")) {
             updateDoc(doc(db, "tasks", id), { lastDone: Timestamp.fromDate(new Date()) });
         } else {
             window.openModal(id);
@@ -145,6 +170,8 @@
     window.openModal = (id = null) => {
         window.editingId = id;
         document.getElementById('taskDate').value = new Date().toISOString().split('T')[0];
+        document.getElementById('deleteBtn').style.display = id ? 'block' : 'none';
+
         if (id) {
             const t = tasks.find(task => task.id === id);
             document.getElementById('taskName').value = t.name;
@@ -160,23 +187,17 @@
         window.toggleModal(true);
     };
 
-    window.toggleModal = (show) => { document.getElementById('modal').style.display = show ? 'block' : 'none'; };
-
-    // Wrap the initialization in a DOMContentLoaded listener
-    document.addEventListener('DOMContentLoaded', () => {
-        // Initial render in case data is already there
-        if (tasks.length > 0) window.renderTasks();
-        
-        if ('serviceWorker' in navigator) { 
-            navigator.serviceWorker.register('sw.js').catch(err => console.log("SW error:", err)); 
-        }
-    });
-
     window.toggleModal = (show) => { 
         const modal = document.getElementById('modal');
         if (modal) modal.style.display = show ? 'block' : 'none'; 
     };
 
+    document.addEventListener('DOMContentLoaded', () => {
+        if (tasks.length > 0) window.renderTasks();
+        if ('serviceWorker' in navigator) { 
+            navigator.serviceWorker.register('sw.js').catch(err => console.log("SW error:", err)); 
+        }
+    });
 </script>
 </body>
 </html>
