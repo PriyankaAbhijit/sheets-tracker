@@ -162,7 +162,21 @@
 
     window.toggleModal = (show) => { document.getElementById('modal').style.display = show ? 'block' : 'none'; };
 
-    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+    // Wrap the initialization in a DOMContentLoaded listener
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initial render in case data is already there
+        if (tasks.length > 0) window.renderTasks();
+        
+        if ('serviceWorker' in navigator) { 
+            navigator.serviceWorker.register('sw.js').catch(err => console.log("SW error:", err)); 
+        }
+    });
+
+    window.toggleModal = (show) => { 
+        const modal = document.getElementById('modal');
+        if (modal) modal.style.display = show ? 'block' : 'none'; 
+    };
+
 </script>
 </body>
 </html>
